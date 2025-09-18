@@ -25,3 +25,5 @@ pytest -q
 - sql/: スキーマDDL
 - data/: 初期データ
 - tests/: テスト
+
+※これはPRテストのための変更です
