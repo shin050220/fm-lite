@@ -1,7 +1,11 @@
 # app/api.py
+from fastapi.staticfiles import StaticFiles
 import sqlite3
 from typing import Optional, List, Dict
 from fastapi import FastAPI, Query
+from app.db import connect
+from fastapi import HTTPException
+from app.db import ensure_event_schema
 
 DB_PATH = "football.db"
 app = FastAPI(title="FM Lite API")
@@ -13,6 +17,13 @@ def get_con() -> sqlite3.Connection:
     con.execute("PRAGMA foreign_keys = ON;")
     return con
 
+@app.on_event("startup")
+def _startup() -> None:
+    con = get_con()
+    try:
+        ensure_event_schema(con)
+    finally:
+        con.close()
 
 @app.get("/health")
 def health() -> Dict[str, bool]:
@@ -98,3 +109,40 @@ def table(season: int = Query(2025, ge=1900, le=3000)) -> List[Dict]:
         return [dict(zip(cols, row)) for row in cur.fetchall()]
     finally:
         con.close()
+
+@app.get("/match/{fixture_id}")
+def match_detail(fixture_id: int):
+    con = get_con()
+    try:
+        fx = con.execute(
+            """
+            SELECT f.id, f.season, f.round_no, f.match_date,
+                   th.name AS home, ta.name AS away,
+                   f.home_goals, f.away_goals, f.status
+            FROM fixtures f
+            JOIN teams th ON th.id=f.home_team_id
+            JOIN teams ta ON ta.id=f.away_team_id
+            WHERE f.id=?
+            """,
+            (fixture_id,),
+        ).fetchone()
+        if fx is None:
+            raise HTTPException(status_code=404, detail="Fixture not found")
+
+        events = [
+            dict(r)
+            for r in con.execute(
+                """
+                SELECT minute, team_side, type, player, assist, description
+                FROM match_events
+                WHERE fixture_id=?
+                ORDER BY minute, id
+                """,
+                (fixture_id,),
+            ).fetchall()
+        ]
+        return {"fixture": dict(fx), "events": events}
+    finally:
+        con.close()
+
+app.mount("/app", StaticFiles(directory="static", html=True), name="app")

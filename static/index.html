@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FM Lite – Fixtures & Table</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="bg-slate-50 text-slate-800">
+    <div id="root" class="min-h-screen"></div>
+
+    <script type="text/babel">
+      const { useEffect, useMemo, useState } = React;
+
+      function Container({ children }) {
+        return (
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {children}
+          </div>
+        );
+      }
+
+      function Badge({ children, color = "gray" }) {
+        const colors = {
+          gray: "bg-slate-100 text-slate-700",
+          green: "bg-emerald-100 text-emerald-700",
+          yellow: "bg-amber-100 text-amber-700",
+          red: "bg-rose-100 text-rose-700",
+          blue: "bg-sky-100 text-sky-700",
+          purple: "bg-violet-100 text-violet-700",
+        };
+        return (
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${colors[color]}`}
+          >
+            {children}
+          </span>
+        );
+      }
+
+      function Card({ title, description, right, children }) {
+        return (
+          <div className="bg-white shadow-sm rounded-2xl ring-1 ring-slate-200 overflow-hidden">
+            <div className="px-4 sm:px-6 py-4 flex items-start justify-between gap-3 border-b border-slate-200 bg-slate-50/60">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+                {description && (
+                  <p className="text-sm text-slate-500 mt-0.5">{description}</p>
+                )}
+              </div>
+              <div className="shrink-0">{right}</div>
+            </div>
+            <div className="p-4 sm:p-6">{children}</div>
+          </div>
+        );
+      }
+
+      function Toolbar({
+        season,
+        setSeason,
+        round,
+        setRound,
+        status,
+        setStatus,
+        onRefresh,
+        loading,
+        updatedAt,
+      }) {
+        return (
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600">
+                Season
+              </label>
+              <input
+                type="number"
+                value={season}
+                onChange={(e) => setSeason(parseInt(e.target.value || 0))}
+                className="mt-1 w-28 rounded-xl border-slate-300 focus:border-sky-500 focus:ring-sky-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600">
+                Round (空=全)
+              </label>
+              <input
+                type="number"
+                placeholder=""
+                value={round ?? ""}
+                onChange={(e) =>
+                  setRound(
+                    e.target.value === "" ? null : parseInt(e.target.value)
+                  )
+                }
+                className="mt-1 w-36 rounded-xl border-slate-300 focus:border-sky-500 focus:ring-sky-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600">
+                Status
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="mt-1 w-40 rounded-xl border-slate-300 focus:border-sky-500 focus:ring-sky-500"
+              >
+                <option value="all">all</option>
+                <option value="scheduled">scheduled</option>
+                <option value="played">played</option>
+                <option value="postponed">postponed</option>
+              </select>
+            </div>
+            <div className="flex-1" />
+            <div className="flex items-center gap-2">
+              {updatedAt && (
+                <span className="text-xs text-slate-500">
+                  更新: {updatedAt.toLocaleTimeString()}
+                </span>
+              )}
+              <button
+                onClick={onRefresh}
+                disabled={loading}
+                className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-white shadow hover:bg-sky-700 disabled:opacity-50"
+              >
+                {loading ? (
+                  <svg
+                    className="h-5 w-5 animate-spin"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M4 12a8 8 0 018-8m0 0v4m0-4h4"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M4 4v5h.582M20 20v-5h-.581M5.5 9.5A7.5 7.5 0 0018 15M6 19a7.5 7.5 0 0012.5-5.5"
+                    />
+                  </svg>
+                )}
+                <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      function useApi() {
+        const [fixtures, setFixtures] = useState([]);
+        const [table, setTable] = useState([]);
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState(null);
+        const [updatedAt, setUpdatedAt] = useState(null);
+
+        const load = async ({ season = 2025, round = null, status = "all" } = {}) => {
+          try {
+            setLoading(true);
+            setError(null);
+            const params = new URLSearchParams({ season: String(season) });
+            if (round != null) params.set("round", String(round));
+            if (status !== "all") params.set("status", status);
+            const [fx, tb] = await Promise.all([
+              fetch(`/fixtures?${params.toString()}`).then((r) => r.json()),
+              fetch(`/table?season=${season}`).then((r) => r.json()),
+            ]);
+            setFixtures(fx);
+            setTable(tb);
+            setUpdatedAt(new Date());
+          } catch (e) {
+            console.error(e);
+            setError(e);
+          } finally {
+            setLoading(false);
+          }
+        };
+        return { fixtures, table, loading, error, updatedAt, load };
+      }
+
+      function FixturesTable({ fixtures, onOpenDetail }) {
+        if (!fixtures.length)
+          return <p className="text-sm text-slate-500">データがありません。</p>;
+        return (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-100 text-slate-600">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Round</th>
+                  <th className="px-3 py-2 text-left font-medium">Date</th>
+                  <th className="px-3 py-2 text-left font-medium">Match</th>
+                  <th className="px-3 py-2 text-left font-medium">Score</th>
+                  <th className="px-3 py-2 text-left font-medium">Status</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {fixtures.map((m) => {
+                  const score =
+                    m.status === "played" &&
+                    (m.home_goals ?? null) != null &&
+                    (m.away_goals ?? null) != null
+                      ? `${m.home_goals} - ${m.away_goals}`
+                      : "-";
+                  const badgeColor =
+                    m.status === "played"
+                      ? "green"
+                      : m.status === "scheduled"
+                      ? "blue"
+                      : m.status === "postponed"
+                      ? "yellow"
+                      : "gray";
+                  return (
+                    <tr key={m.id}>
+                      <td className="px-3 py-2">{m.round_no}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {m.match_date}
+                      </td>
+                      <td className="px-3 py-2">
+                        {m.home} <span className="text-slate-400">vs</span> {m.away}
+                      </td>
+                      <td className="px-3 py-2">{score}</td>
+                      <td className="px-3 py-2">
+                        <Badge color={badgeColor}>{m.status}</Badge>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          onClick={() => onOpenDetail(m.id)}
+                          className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 bg-white ring-1 ring-slate-300 text-slate-700 hover:bg-slate-50"
+                        >
+                          <svg
+                            className="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                          詳細
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      function LeagueTable({ rows }) {
+        if (!rows.length)
+          return <p className="text-sm text-slate-500">データがありません。</p>;
+        return (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-100 text-slate-600">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Team</th>
+                  <th className="px-3 py-2 text-right font-medium">Pld</th>
+                  <th className="px-3 py-2 text-right font-medium">W</th>
+                  <th className="px-3 py-2 text-right font-medium">D</th>
+                  <th className="px-3 py-2 text-right font-medium">L</th>
+                  <th className="px-3 py-2 text-right font-medium">GF</th>
+                  <th className="px-3 py-2 text-right font-medium">GA</th>
+                  <th className="px-3 py-2 text-right font-medium">GD</th>
+                  <th className="px-3 py-2 text-right font-medium">Pts</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {rows.map((r, idx) => (
+                  <tr key={r.team} className={idx < 1 ? "bg-emerald-50/40" : ""}>
+                    <td className="px-3 py-2 whitespace-nowrap font-medium">
+                      {r.team}
+                    </td>
+                    <td className="px-3 py-2 text-right">{r.Pld}</td>
+                    <td className="px-3 py-2 text-right">{r.W}</td>
+                    <td className="px-3 py-2 text-right">{r.D}</td>
+                    <td className="px-3 py-2 text-right">{r.L}</td>
+                    <td className="px-3 py-2 text-right">{r.GF}</td>
+                    <td className="px-3 py-2 text-right">{r.GA}</td>
+                    <td className="px-3 py-2 text-right">{r.GD}</td>
+                    <td className="px-3 py-2 text-right font-semibold">
+                      {r.Pts}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      function Modal({ open, onClose, children, title }) {
+        if (!open) return null;
+        return (
+          <div className="fixed inset-0 z-50">
+            <div
+              className="absolute inset-0 bg-slate-900/40"
+              onClick={onClose}
+            />
+            <div className="absolute inset-y-0 right-0 w-full sm:w-[42rem] bg-white shadow-xl">
+              <div className="flex items-center justify-between border-b border-slate-200 px-4 sm:px-6 py-3">
+                <h3 className="text-base sm:text-lg font-semibold text-slate-900">
+                  {title}
+                </h3>
+                <button
+                  onClick={onClose}
+                  className="rounded-lg p-2 hover:bg-slate-100"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-4 sm:p-6 overflow-y-auto h-[calc(100%-3.25rem)]">
+                {children}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function EventRow({ e }) {
+        const icon = {
+          goal: "⚽",
+          yellow: "🟨",
+          red: "🟥",
+          sub: "🔁",
+        }[e.type] || "•";
+        const side = e.team_side === "home" ? "home" : "away";
+        const color = e.type === "goal"
+          ? "green"
+          : e.type === "red"
+          ? "red"
+          : e.type === "yellow"
+          ? "yellow"
+          : "purple";
+        return (
+          <div className="flex items-start gap-3 py-2">
+            <Badge color={color}>{e.minute}'</Badge>
+            <div className="flex-1">
+              <div className="text-sm">
+                <span className="mr-2">{icon}</span>
+                <span className="uppercase tracking-wide text-slate-500 mr-2">
+                  {e.type}
+                </span>
+                {e.description || (e.player ? `${e.player}` : "")}
+                {e.assist ? <span className="text-slate-500"> (A: {e.assist})</span> : null}
+                <span className="ml-2 text-slate-400">[{side}]</span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function MatchDetail({ fixtureId, onClose }) {
+        const [data, setData] = useState(null);
+        const [loading, setLoading] = useState(true);
+        const [error, setError] = useState(null);
+
+        useEffect(() => {
+          let ignore = false;
+          setLoading(true);
+          fetch(`/match/${fixtureId}`)
+            .then((r) => {
+              if (!r.ok) throw new Error("failed to load");
+              return r.json();
+            })
+            .then((d) => {
+              if (ignore) return;
+              setData(d);
+            })
+            .catch(setError)
+            .finally(() => setLoading(false));
+          return () => (ignore = true);
+        }, [fixtureId]);
+
+        if (loading) return <p className="text-sm text-slate-500">読み込み中…</p>;
+        if (error) return <p className="text-sm text-rose-600">{String(error)}</p>;
+        const f = data.fixture;
+        const events = data.events || [];
+        const score =
+          f.status === "played" &&
+          (f.home_goals ?? null) != null &&
+          (f.away_goals ?? null) != null
+            ? `${f.home_goals} - ${f.away_goals}`
+            : "-";
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-lg font-semibold text-slate-900">
+                  {f.home} <span className="text-slate-400">vs</span> {f.away}
+                </div>
+                <div className="text-sm text-slate-500 mt-0.5">
+                  Round {f.round_no} ・ {f.match_date}
+                </div>
+              </div>
+              <div className="text-2xl font-bold tracking-tight">{score}</div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-3">
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">
+                Timeline
+              </h4>
+              {events.length === 0 ? (
+                <p className="text-sm text-slate-500">イベントはありません。</p>
+              ) : (
+                <div className="space-y-1">
+                  {events.map((e, i) => (
+                    <EventRow key={i} e={e} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      function App() {
+        const [season, setSeason] = useState(2025);
+        const [round, setRound] = useState(null);
+        const [status, setStatus] = useState("all");
+        const { fixtures, table, loading, error, updatedAt, load } = useApi();
+        const [detailId, setDetailId] = useState(null);
+
+        useEffect(() => {
+          load({ season, round, status });
+        }, []);
+
+        const onRefresh = () => load({ season, round, status });
+        const openDetail = (id) => setDetailId(id);
+        const closeDetail = () => setDetailId(null);
+
+        return (
+          <Container>
+            <header className="mb-6">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                FM Lite Dashboard
+              </h1>
+              <p className="text-slate-600 mt-1">
+                /fixtures ・ /table ・ match detail を表示します。
+              </p>
+            </header>
+
+            <Card
+              title="Filters"
+              description="Season / Round / Status を指定して更新できます"
+              right={
+                <Toolbar
+                  season={season}
+                  setSeason={setSeason}
+                  round={round}
+                  setRound={setRound}
+                  status={status}
+                  setStatus={setStatus}
+                  onRefresh={onRefresh}
+                  loading={loading}
+                  updatedAt={updatedAt}
+                />
+              }
+            />
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <Card
+                title="Fixtures"
+                description="対戦一覧（スコアは played のみ表示）"
+              >
+                {error ? (
+                  <p className="text-rose-600 text-sm">{String(error)}</p>
+                ) : loading ? (
+                  <p className="text-slate-500 text-sm">読み込み中…</p>
+                ) : (
+                  <FixturesTable
+                    fixtures={fixtures}
+                    onOpenDetail={openDetail}
+                  />
+                )}
+              </Card>
+
+              <Card title="League Table" description="勝点・得失点差で並び替え">
+                {error ? (
+                  <p className="text-rose-600 text-sm">{String(error)}</p>
+                ) : loading ? (
+                  <p className="text-slate-500 text-sm">読み込み中…</p>
+                ) : (
+                  <LeagueTable rows={table} />
+                )}
+              </Card>
+            </div>
+
+            <Modal open={detailId != null} onClose={closeDetail} title="Match detail">
+              {detailId != null ? (
+                <MatchDetail fixtureId={detailId} onClose={closeDetail} />
+              ) : null}
+            </Modal>
+
+            <footer className="mt-10 text-center text-xs text-slate-500">
+              <p>
+                Powered by FastAPI @ <code>/fixtures</code> & <code>/table</code>
+                & <code>/match/:id</code>
+              </p>
+            </footer>
+          </Container>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
