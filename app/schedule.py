@@ -6,6 +6,7 @@ Match = Tuple[str, str]
 Round = List[Match]
 Schedule = List[Round]
 
+
 def generate_round_robin(
     teams: List[str],
     double_round: bool = True,
@@ -22,14 +23,15 @@ def generate_round_robin(
     if len(teams) % 2 == 1:
         teams.append(bye_token)
 
-    n = len(teams); half = n // 2
+    n = len(teams)
+    half = n // 2
     fixed, rot = teams[0], teams[1:]
 
     rounds: Schedule = []
     for r in range(n - 1):
-        left = [fixed] + rot[:half - 1]
-        right = rot[half - 1:][::-1]
-        swap = (r % 2 == 1)
+        left = [fixed] + rot[: half - 1]
+        right = rot[half - 1 :][::-1]
+        swap = r % 2 == 1
         matches: Round = []
         for a, b in zip(left, right):
             if bye_token in (a, b):
@@ -41,6 +43,7 @@ def generate_round_robin(
     if double_round:
         rounds += [[(b, a) for (a, b) in rnd] for rnd in rounds]
     return rounds
+
 
 def assign_dates(schedule: Schedule, start_on: date, interval_days: int = 7):
     out = []
