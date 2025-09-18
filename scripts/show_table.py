@@ -1,14 +1,15 @@
 # scripts/show_table.py
 import sqlite3
-import sys
 
 SEASON = 2025
 DB_PATH = "football.db"
 
+
 def main():
     con = sqlite3.connect(DB_PATH)
     try:
-        cur = con.execute("""
+        cur = con.execute(
+            """
         WITH played AS (
           SELECT * FROM fixtures
           WHERE season=? AND status='played'
@@ -54,13 +55,19 @@ def main():
         FROM allrows
         GROUP BY team_id
         ORDER BY Pts DESC, GD DESC, GF DESC, name ASC;
-        """, (SEASON,))
+        """,
+            (SEASON,),
+        )
         print("Team                     Pld  W  D  L  GF  GA  GD  Pts")
-        print("-"*62)
-        for (name, pld, w, d, l, gf, ga, gd, pts) in cur.fetchall():
-            print(f"{name:22} {pld:>3} {w:>2} {d:>2} {l:>2} {gf:>3} {ga:>3} {gd:>3} {pts:>4}")
+        print("-" * 62)
+        for name, pld, w, d, l, gf, ga, gd, pts in cur.fetchall():
+            print(
+                f"{name:22} {pld:>3} {w:>2} {d:>2} {l:>2} "
+                f"{gf:>3} {ga:>3} {gd:>3} {pts:>4}"
+            )
     finally:
         con.close()
+
 
 if __name__ == "__main__":
     main()
